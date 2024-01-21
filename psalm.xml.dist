@@ -62,6 +62,7 @@
                 <referencedClass name="Doctrine\DBAL\Platforms\Keywords\PostgreSQL94Keywords"/>
                 <referencedClass name="Doctrine\DBAL\Platforms\Keywords\SQLServer2012Keywords"/>
                 <referencedClass name="Doctrine\DBAL\Platforms\MariaDb1027Platform"/>
+                <referencedClass name="Doctrine\DBAL\Platforms\MariaDb1043Platform"/>
                 <referencedClass name="Doctrine\DBAL\Platforms\MySQL57Platform"/>
                 <referencedClass name="Doctrine\DBAL\Platforms\PostgreSQL100Platform"/>
                 <referencedClass name="Doctrine\DBAL\Platforms\PostgreSQL94Platform"/>
@@ -325,6 +326,7 @@
                 <referencedMethod name="Doctrine\DBAL\Platforms\SQLServerPlatform::getListTableForeignKeysSQL"/>
                 <referencedMethod name="Doctrine\DBAL\Platforms\SQLServerPlatform::getListTableIndexesSQL"/>
                 <referencedMethod name="Doctrine\DBAL\Platforms\SQLServerPlatform::getListTableMetadataSQL"/>
+                <referencedMethod name="Doctrine\DBAL\Platforms\SqlitePlatform::disableSchemaEmulation"/>
                 <referencedMethod name="Doctrine\DBAL\Platforms\SqlitePlatform::getListTableColumnsSQL"/>
                 <referencedMethod name="Doctrine\DBAL\Platforms\SqlitePlatform::getListTableForeignKeysSQL"/>
                 <referencedMethod name="Doctrine\DBAL\Platforms\SqlitePlatform::getListTableIndexesSQL"/>
@@ -588,6 +590,11 @@
                 <file name="tests/Functional/Schema/SchemaManagerFunctionalTestCase.php"/>
             </errorLevel>
         </DocblockTypeContradiction>
+        <DuplicateClass>
+            <errorLevel type="suppress">
+                <file name="src/Tools/Console/Command/CommandCompatibility.php"/>
+            </errorLevel>
+        </DuplicateClass>
         <FalsableReturnStatement>
             <errorLevel type="suppress">
                 <!--

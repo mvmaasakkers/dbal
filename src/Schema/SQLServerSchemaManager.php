@@ -55,7 +55,7 @@ class SQLServerSchemaManager extends AbstractSchemaManager
      */
     public function listTableDetails($name)
     {
-        Deprecation::trigger(
+        Deprecation::triggerIfCalledFromOutside(
             'doctrine/dbal',
             'https://github.com/doctrine/dbal/pull/5595',
             '%s is deprecated. Use introspectTable() instead.',
@@ -133,8 +133,16 @@ SQL,
 
         switch ($dbType) {
             case 'nchar':
-            case 'nvarchar':
             case 'ntext':
+                // Unicode data requires 2 bytes per character
+                $length /= 2;
+                break;
+
+            case 'nvarchar':
+                if ($length === -1) {
+                    break;
+                }
+
                 // Unicode data requires 2 bytes per character
                 $length /= 2;
                 break;

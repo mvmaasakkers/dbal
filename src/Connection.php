@@ -209,6 +209,7 @@ class Connection
 
             $this->platform = $params['platform'];
             $this->platform->setEventManager($this->_eventManager);
+            $this->platform->setDisableTypeComments($config->getDisableTypeComments());
         }
 
         $this->_expr = $this->createExpressionBuilder();
@@ -315,6 +316,7 @@ class Connection
         if ($this->platform === null) {
             $this->platform = $this->detectDatabasePlatform();
             $this->platform->setEventManager($this->_eventManager);
+            $this->platform->setDisableTypeComments($this->_config->getDisableTypeComments());
         }
 
         return $this->platform;
@@ -1792,7 +1794,7 @@ class Connection
                             'doctrine/dbal',
                             'https://github.com/doctrine/dbal/pull/5550',
                             'Using NULL as prepared statement parameter type is deprecated.'
-                                . 'Omit or use Parameter::STRING instead',
+                                . 'Omit or use ParameterType::STRING instead',
                         );
                     }
 
@@ -1815,7 +1817,7 @@ class Connection
                             'doctrine/dbal',
                             'https://github.com/doctrine/dbal/pull/5550',
                             'Using NULL as prepared statement parameter type is deprecated.'
-                                . 'Omit or use Parameter::STRING instead',
+                                . 'Omit or use ParameterType::STRING instead',
                         );
                     }
 
@@ -1919,6 +1921,7 @@ class Connection
                 $type === ArrayParameterType::INTEGER
                 || $type === ArrayParameterType::STRING
                 || $type === ArrayParameterType::ASCII
+                || $type === ArrayParameterType::BINARY
             ) {
                 return true;
             }
