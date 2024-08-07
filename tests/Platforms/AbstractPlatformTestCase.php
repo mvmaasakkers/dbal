@@ -18,6 +18,7 @@ use Doctrine\DBAL\Schema\UniqueConstraint;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 use function implode;
@@ -47,7 +48,7 @@ abstract class AbstractPlatformTestCase extends TestCase
         self::assertEquals('"test"."test"', $this->platform->quoteIdentifier('test.test'));
     }
 
-    /** @dataProvider getReturnsForeignKeyReferentialActionSQL */
+    #[DataProvider('getReturnsForeignKeyReferentialActionSQL')]
     public function testReturnsForeignKeyReferentialActionSQL(string $action, string $expectedSQL): void
     {
         self::assertSame($expectedSQL, $this->platform->getForeignKeyReferentialActionSQL($action));
@@ -82,6 +83,40 @@ abstract class AbstractPlatformTestCase extends TestCase
     {
         $this->platform->registerDoctrineTypeMapping('foo', Types::INTEGER);
         self::assertEquals(Types::INTEGER, $this->platform->getDoctrineTypeMapping('foo'));
+    }
+
+    public function testCaseInsensitiveDoctrineTypeMappingFromType(): void
+    {
+        $type = new class () extends Type {
+            /**
+             * {@inheritDoc}
+             */
+            public function getMappedDatabaseTypes(AbstractPlatform $platform): array
+            {
+                return ['TESTTYPE'];
+            }
+
+            public function getName(): string
+            {
+                return 'testtype';
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            public function getSQLDeclaration(array $column, AbstractPlatform $platform): string
+            {
+                return $platform->getDecimalTypeDeclarationSQL($column);
+            }
+        };
+
+        if (Type::hasType($type->getName())) {
+            Type::overrideType($type->getName(), $type::class);
+        } else {
+            Type::addType($type->getName(), $type::class);
+        }
+
+        self::assertSame($type->getName(), $this->platform->getDoctrineTypeMapping('TeStTyPe'));
     }
 
     public function testRegisterUnknownDoctrineMappingType(): void
@@ -780,7 +815,7 @@ abstract class AbstractPlatformTestCase extends TestCase
         );
     }
 
-    /** @dataProvider getGeneratesInlineColumnCommentSQL */
+    #[DataProvider('getGeneratesInlineColumnCommentSQL')]
     public function testGeneratesInlineColumnCommentSQL(string $comment, string $expectedSql): void
     {
         if (! $this->platform->supportsInlineColumnComments()) {
@@ -909,11 +944,8 @@ abstract class AbstractPlatformTestCase extends TestCase
     /** @return string[] */
     abstract protected function getGeneratesAlterTableRenameIndexUsedByForeignKeySQL(): array;
 
-    /**
-     * @param mixed[] $column
-     *
-     * @dataProvider getGeneratesDecimalTypeDeclarationSQL
-     */
+    /** @param mixed[] $column */
+    #[DataProvider('getGeneratesDecimalTypeDeclarationSQL')]
     public function testGeneratesDecimalTypeDeclarationSQL(array $column, string $expectedSql): void
     {
         self::assertSame($expectedSql, $this->platform->getDecimalTypeDeclarationSQL($column));
@@ -926,11 +958,8 @@ abstract class AbstractPlatformTestCase extends TestCase
         yield [['precision' => 8, 'scale' => 2], 'NUMERIC(8, 2)'];
     }
 
-    /**
-     * @param mixed[] $column
-     *
-     * @dataProvider getGeneratesFloatDeclarationSQL
-     */
+    /** @param mixed[] $column */
+    #[DataProvider('getGeneratesFloatDeclarationSQL')]
     public function testGeneratesFloatDeclarationSQL(array $column, string $expectedSql): void
     {
         self::assertSame($expectedSql, $this->platform->getFloatDeclarationSQL($column));
@@ -967,11 +996,8 @@ abstract class AbstractPlatformTestCase extends TestCase
         );
     }
 
-    /**
-     * @param array<string, mixed> $column
-     *
-     * @dataProvider asciiStringSqlDeclarationDataProvider
-     */
+    /** @param array<string, mixed> $column */
+    #[DataProvider('asciiStringSqlDeclarationDataProvider')]
     public function testAsciiSQLDeclaration(string $expectedSql, array $column): void
     {
         $declarationSql = $this->platform->getAsciiStringTypeDeclarationSQL($column);

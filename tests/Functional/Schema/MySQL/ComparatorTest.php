@@ -7,7 +7,8 @@ namespace Doctrine\DBAL\Tests\Functional\Schema\MySQL;
 use Doctrine\DBAL\Exception;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Platforms\MariaDB1043Platform;
+use Doctrine\DBAL\Platforms\MariaDBPlatform;
+use Doctrine\DBAL\Platforms\MySQL80Platform;
 use Doctrine\DBAL\Schema\AbstractSchemaManager;
 use Doctrine\DBAL\Schema\Column;
 use Doctrine\DBAL\Schema\Comparator;
@@ -15,6 +16,7 @@ use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Tests\Functional\Schema\ComparatorTestUtils;
 use Doctrine\DBAL\Tests\FunctionalTestCase;
 use Doctrine\DBAL\Types\Types;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 final class ComparatorTest extends FunctionalTestCase
 {
@@ -36,7 +38,7 @@ final class ComparatorTest extends FunctionalTestCase
         $this->comparator    = $this->schemaManager->createComparator();
     }
 
-    /** @dataProvider lobColumnProvider */
+    #[DataProvider('lobColumnProvider')]
     public function testLobLengthIncrementWithinLimit(string $type, int $length): void
     {
         $table = $this->createLobTable($type, $length - 1);
@@ -55,7 +57,7 @@ final class ComparatorTest extends FunctionalTestCase
         )->isEmpty());
     }
 
-    /** @dataProvider lobColumnProvider */
+    #[DataProvider('lobColumnProvider')]
     public function testLobLengthIncrementOverLimit(string $type, int $length): void
     {
         $table = $this->createLobTable($type, $length);
@@ -130,9 +132,8 @@ final class ComparatorTest extends FunctionalTestCase
     /**
      * @param array<string,string> $tableOptions
      * @param array<string,string> $columnOptions
-     *
-     * @dataProvider tableAndColumnOptionsProvider
      */
+    #[DataProvider('tableAndColumnOptionsProvider')]
     public function testTableAndColumnOptions(array $tableOptions, array $columnOptions): void
     {
         $table = new Table('comparator_test', [], [], [], [], $tableOptions);
@@ -141,6 +142,26 @@ final class ComparatorTest extends FunctionalTestCase
             'platformOptions' => $columnOptions,
         ]);
 
+        $this->dropAndCreateTable($table);
+
+        self::assertTrue(ComparatorTestUtils::diffFromActualToDesiredTable(
+            $this->schemaManager,
+            $this->comparator,
+            $table,
+        )->isEmpty());
+
+        self::assertTrue(ComparatorTestUtils::diffFromDesiredToActualTable(
+            $this->schemaManager,
+            $this->comparator,
+            $table,
+        )->isEmpty());
+    }
+
+    public function testSimpleArrayTypeNonChangeNotDetected(): void
+    {
+        $table = new Table('comparator_test');
+
+        $table->addColumn('simple_array_col', Types::SIMPLE_ARRAY, ['length' => 255]);
         $this->dropAndCreateTable($table);
 
         self::assertTrue(ComparatorTestUtils::diffFromActualToDesiredTable(
@@ -177,7 +198,7 @@ final class ComparatorTest extends FunctionalTestCase
 
     public function testMariaDb1043NativeJsonUpgradeDetected(): void
     {
-        if (! $this->platform instanceof MariaDB1043Platform) {
+        if (! $this->platform instanceof MariaDBPlatform && ! $this->platform instanceof MySQL80Platform) {
             self::markTestSkipped();
         }
 

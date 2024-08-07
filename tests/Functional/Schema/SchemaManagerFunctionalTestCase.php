@@ -33,6 +33,7 @@ use Doctrine\DBAL\Types\TextType;
 use Doctrine\DBAL\Types\TimeType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 use function array_filter;
 use function array_keys;
@@ -75,6 +76,16 @@ abstract class SchemaManagerFunctionalTestCase extends FunctionalTestCase
         try {
             //sql server versions below 2016 do not support 'IF EXISTS' so we have to catch the exception here
             $this->connection->executeStatement('DROP SCHEMA testschema');
+        } catch (Exception) {
+        }
+
+        try {
+            $this->connection->executeStatement('DROP VIEW test_view');
+        } catch (Exception) {
+        }
+
+        try {
+            $this->connection->executeStatement('DROP VIEW doctrine_test_view');
         } catch (Exception) {
         }
     }
@@ -208,7 +219,7 @@ abstract class SchemaManagerFunctionalTestCase extends FunctionalTestCase
         self::assertNull($view);
     }
 
-    /** @dataProvider tableFilterProvider */
+    #[DataProvider('tableFilterProvider')]
     public function testListTablesWithFilter(string $prefix, int $expectedCount): void
     {
         $this->createTestTable('filter_test_1');

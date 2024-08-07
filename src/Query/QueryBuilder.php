@@ -13,6 +13,7 @@ use Doctrine\DBAL\Query\Exception\NonUniqueAlias;
 use Doctrine\DBAL\Query\Exception\UnknownAlias;
 use Doctrine\DBAL\Query\Expression\CompositeExpression;
 use Doctrine\DBAL\Query\Expression\ExpressionBuilder;
+use Doctrine\DBAL\Query\ForUpdate\ConflictResolutionMode;
 use Doctrine\DBAL\Result;
 use Doctrine\DBAL\Statement;
 use Doctrine\DBAL\Types\Type;
@@ -142,6 +143,8 @@ class QueryBuilder
      * @var string[]
      */
     private array $orderBy = [];
+
+    private ?ForUpdate $forUpdate = null;
 
     /**
      * The values of an INSERT query.
@@ -485,6 +488,20 @@ class QueryBuilder
     }
 
     /**
+     * Locks the queried rows for a subsequent update.
+     *
+     * @return $this
+     */
+    public function forUpdate(ConflictResolutionMode $conflictResolutionMode = ConflictResolutionMode::ORDINARY): self
+    {
+        $this->forUpdate = new ForUpdate($conflictResolutionMode);
+
+        $this->sql = null;
+
+        return $this;
+    }
+
+    /**
      * Specifies an item that is to be returned in the query result.
      * Replaces any previously specified selections, if any.
      *
@@ -503,10 +520,6 @@ class QueryBuilder
     {
         $this->type = QueryType::SELECT;
 
-        if (count($expressions) < 1) {
-            return $this;
-        }
-
         $this->select = $expressions;
 
         $this->sql = null;
@@ -515,7 +528,7 @@ class QueryBuilder
     }
 
     /**
-     * Adds DISTINCT to the query.
+     * Adds or removes DISTINCT to/from the query.
      *
      * <code>
      *     $qb = $conn->createQueryBuilder()
@@ -526,11 +539,10 @@ class QueryBuilder
      *
      * @return $this This QueryBuilder instance.
      */
-    public function distinct(): self
+    public function distinct(bool $distinct = true): self
     {
-        $this->distinct = true;
-
-        $this->sql = null;
+        $this->distinct = $distinct;
+        $this->sql      = null;
 
         return $this;
     }
@@ -568,7 +580,7 @@ class QueryBuilder
      *
      * <code>
      *     $qb = $conn->createQueryBuilder()
-     *         ->delete('users', 'u')
+     *         ->delete('users u')
      *         ->where('u.id = :user_id')
      *         ->setParameter(':user_id', 1);
      * </code>
@@ -594,7 +606,7 @@ class QueryBuilder
      *
      * <code>
      *     $qb = $conn->createQueryBuilder()
-     *         ->update('counters', 'c')
+     *         ->update('counters c')
      *         ->set('c.value', 'c.value + 1')
      *         ->where('c.id = ?');
      * </code>
@@ -773,7 +785,7 @@ class QueryBuilder
      *
      * <code>
      *     $qb = $conn->createQueryBuilder()
-     *         ->update('counters', 'c')
+     *         ->update('counters c')
      *         ->set('c.value', 'c.value + 1')
      *         ->where('c.id = ?');
      * </code>
@@ -809,7 +821,7 @@ class QueryBuilder
      *     $or->add($qb->expr()->eq('c.id', 1));
      *     $or->add($qb->expr()->eq('c.id', 2));
      *
-     *     $qb->update('counters', 'c')
+     *     $qb->update('counters c')
      *         ->set('c.value', 'c.value + 1')
      *         ->where($or);
      * </code>
@@ -1139,50 +1151,80 @@ class QueryBuilder
         return $this;
     }
 
-    /** @throws QueryException */
+    /**
+     * Resets the WHERE conditions for the query.
+     *
+     * @return $this This QueryBuilder instance.
+     */
+    public function resetWhere(): self
+    {
+        $this->where = null;
+        $this->sql   = null;
+
+        return $this;
+    }
+
+    /**
+     * Resets the grouping for the query.
+     *
+     * @return $this This QueryBuilder instance.
+     */
+    public function resetGroupBy(): self
+    {
+        $this->groupBy = [];
+        $this->sql     = null;
+
+        return $this;
+    }
+
+    /**
+     * Resets the HAVING conditions for the query.
+     *
+     * @return $this This QueryBuilder instance.
+     */
+    public function resetHaving(): self
+    {
+        $this->having = null;
+        $this->sql    = null;
+
+        return $this;
+    }
+
+    /**
+     * Resets the ordering for the query.
+     *
+     * @return $this This QueryBuilder instance.
+     */
+    public function resetOrderBy(): self
+    {
+        $this->orderBy = [];
+        $this->sql     = null;
+
+        return $this;
+    }
+
+    /** @throws Exception */
     private function getSQLForSelect(): string
     {
         if (count($this->select) === 0) {
             throw new QueryException('No SELECT expressions given. Please use select() or addSelect().');
         }
 
-        $query = 'SELECT';
-
-        if ($this->distinct) {
-            $query .= ' DISTINCT';
-        }
-
-        $query .= ' ' . implode(', ', $this->select);
-
-        if (count($this->from) !== 0) {
-            $query .= ' FROM ' . implode(', ', $this->getFromClauses());
-        }
-
-        if ($this->where !== null) {
-            $query .= ' WHERE ' . $this->where;
-        }
-
-        if (count($this->groupBy) !== 0) {
-            $query .= ' GROUP BY ' . implode(', ', $this->groupBy);
-        }
-
-        if ($this->having !== null) {
-            $query .= ' HAVING ' . $this->having;
-        }
-
-        if (count($this->orderBy) !== 0) {
-            $query .= ' ORDER BY ' . implode(', ', $this->orderBy);
-        }
-
-        if ($this->isLimitQuery()) {
-            return $this->connection->getDatabasePlatform()->modifyLimitQuery(
-                $query,
-                $this->maxResults,
-                $this->firstResult,
+        return $this->connection->getDatabasePlatform()
+            ->createSelectSQLBuilder()
+            ->buildSQL(
+                new SelectQuery(
+                    $this->distinct,
+                    $this->select,
+                    $this->getFromClauses(),
+                    $this->where !== null ? (string) $this->where : null,
+                    $this->groupBy,
+                    $this->having !== null ? (string) $this->having : null,
+                    $this->orderBy,
+                    new Limit($this->maxResults, $this->firstResult),
+                    $this->forUpdate,
+                ),
             );
-        }
-
-        return $query;
     }
 
     /**
@@ -1226,11 +1268,6 @@ class QueryBuilder
                 throw UnknownAlias::new($fromAlias, array_keys($knownAliases));
             }
         }
-    }
-
-    private function isLimitQuery(): bool
-    {
-        return $this->maxResults !== null || $this->firstResult !== 0;
     }
 
     /**
@@ -1417,7 +1454,7 @@ class QueryBuilder
 
     /**
      * Enables caching of the results of this query, for given amount of seconds
-     * and optionally specified witch key to use for the cache entry.
+     * and optionally specified which key to use for the cache entry.
      *
      * @return $this
      */

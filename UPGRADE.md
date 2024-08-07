@@ -8,6 +8,40 @@ awareness about deprecated code.
 
 # Upgrade to 4.0
 
+## BC BREAK: removed `AbstractMySQLPlatform` methods.
+
+1. `getColumnTypeSQLSnippets()`,
+2. `getDatabaseNameSQL()`.
+
+## BC BREAK: Removed lock-related `AbstractPlatform` methods
+
+The methods `AbstractPlatform::getReadLockSQL()`, `::getWriteLockSQL()` and `::getForUpdateSQL()` have been removed
+Use `QueryBuilder::forUpdate()` as a replacement for the latter.
+
+## BC BREAK: BIGINT values are cast to int if possible
+
+`BigIntType` casts values retrieved from the database to int if they're inside
+the integer range of PHP. Previously, those values were always cast to string.
+
+## BC BREAK: Stricter `DateTime` types
+
+The following types don't accept or return `DateTimeImmutable` instances anymore:
+
+* `DateTimeType`
+* `DateTimeTzType`
+* `DateType`
+* `TimeType`
+* `VarDateTimeType`
+
+As a consequence, the following type classes don't extend their mutable
+counterparts anymore:
+
+* `DateTimeImmutableType`
+* `DateTimeTzImmutableType`
+* `DateImmutableType`
+* `TimeImmutableType`
+* `VarDateTimeImmutableType`
+
 ## BC BREAK: Remove legacy execute and fetch methods.
 
 The following methods have been removed:
@@ -191,9 +225,11 @@ The following classes have been converted to enums:
 1. `Doctrine\DBAL\ColumnCase`,
 2. `Doctrine\DBAL\LockMode`,
 3. `Doctrine\DBAL\ParameterType`,
-4. `Doctrine\DBAL\TransactionIsolationLevel`,
-5. `Doctrine\DBAL\Platforms\DateIntervalUnit`,
-6. `Doctrine\DBAL\Platforms\TrimMode`.
+4. `Doctrine\DBAL\ArrayParameterType`,
+5. `Doctrine\DBAL\TransactionIsolationLevel`,
+6. `Doctrine\DBAL\Platforms\DateIntervalUnit`,
+7. `Doctrine\DBAL\Platforms\TrimMode`.
+8. `Doctrine\DBAL\Query\ForUpdate\ConflictResolutionMode`
 
 The corresponding class constants are now instances of their enum type.
 
@@ -400,11 +436,12 @@ The `Doctrine\DBAL\Schema\Visitor\Graphviz` class has been removed.
 
 Oracle 12c (12.2.0.1) and older are not supported anymore.
 
-## BC BREAK: Removed support for MariaDB 10.2.6 and older
+## BC BREAK: Removed support for MariaDB 10.4.2 and older
 
-MariaDB 10.2.6 and older are not supported anymore. The following classes have been removed:
+MariaDB 10.4.2 and older are not supported anymore. The following classes have been removed:
 
 * `Doctrine\DBAL\Platforms\MariaDb1027Platform`
+* `Doctrine\DBAL\Platforms\MariaDB1043Platform`
 * `Doctrine\DBAL\Platforms\Keywords\MariaDb102Keywords`
 
 ## BC BREAK: Removed support for MySQL 5.6 and older
@@ -894,6 +931,42 @@ The following methods have been removed.
 | `QueryCacheProfile` | `setResultCacheDriver()` | `setResultCache()` |
 | `QueryCacheProfile` | `getResultCacheDriver()` | `getResultCache()` |
 
+# Upgrade to 3.8
+
+## Deprecated lock-related `AbstractPlatform` methods
+
+The usage of `AbstractPlatform::getReadLockSQL()`, `::getWriteLockSQL()` and `::getForUpdateSQL()` is deprecated as
+this API is not portable. Use `QueryBuilder::forUpdate()` as a replacement for the latter.
+
+## Deprecated `AbstractMySQLPlatform` methods
+
+* `AbstractMySQLPlatform::getColumnTypeSQLSnippets()` has been deprecated
+  in favor of `AbstractMySQLPlatform::getColumnTypeSQLSnippet()`.
+* `AbstractMySQLPlatform::getDatabaseNameSQL()` has been deprecated without replacement.
+* Not passing a database name to `AbstractMySQLPlatform::getColumnTypeSQLSnippet()` has been deprecated.
+
+## Deprecated reset methods from `QueryBuilder`
+
+`QueryBuilder::resetQueryParts()` has been deprecated.
+
+Resetting individual query parts through the generic `resetQueryPart()` method has been deprecated as well.
+However, several replacements have been put in place depending on the `$queryPartName` parameter:
+
+| `$queryPartName` | suggested replacement                      |
+|------------------|--------------------------------------------|
+| `'select'`       | Call `select()` with a new set of columns. |
+| `'distinct'`     | `distinct(false)`                          |
+| `'where'`        | `resetWhere()`                             |
+| `'groupBy'`      | `resetGroupBy()`                           |
+| `'having'`       | `resetHaving()`                            |
+| `'orderBy'`      | `resetOrderBy()`                           |
+| `'values'`       | Call `values()` with a new set of values.  |
+
+## Deprecated getting query parts from `QueryBuilder`
+
+The usage of `QueryBuilder::getQueryPart()` and `::getQueryParts()` is deprecated. The query parts
+are implementation details and should not be relied upon.
+
 # Upgrade to 3.6
 
 ## Deprecated not setting a schema manager factory
@@ -1308,7 +1381,7 @@ The `Connection::ARRAY_PARAM_OFFSET` constant has been marked as internal. It wi
 
 ## Deprecated using NULL as prepared statement parameter type.
 
-Omit the type or use `Parameter::STRING` instead.
+Omit the type or use `ParameterType::STRING` instead.
 
 ## Deprecated passing asset names as assets in `AbstractPlatform` and `AbstractSchemaManager` methods.
 
@@ -1567,10 +1640,12 @@ This method is unused by the DBAL since 2.0.
 
 ## Deprecated `Type::getName()`
 
-This will method is not useful for the DBAL anymore, and will be removed in 4.0.
+This method is not useful for the DBAL anymore, and will be removed in 4.0.
 As a consequence, depending on the name of a type being `json` for `jsonb` to
 be used for the Postgres platform is deprecated in favor of extending
 `Doctrine\DBAL\Types\JsonType`.
+
+You can use `Type::getTypeRegistry()->lookupName($type)` instead.
 
 ## Deprecated `AbstractPlatform::getColumnComment()`, `AbstractPlatform::getDoctrineTypeComment()`,
 `AbstractPlatform::hasNative*Type()` and `Type::requiresSQLCommentHint()`
@@ -1675,7 +1750,7 @@ We have been working on phasing out `doctrine/cache`, and 3.2.0 allows to use
 `psr/cache` instead. To help calling our own internal APIs in a unified way, we
 also wrap `doctrine/cache` implementations with a `psr/cache` adapter.
 Using cache keys containing characters reserved by `psr/cache` will result in
-an exception. The characters are the following: `{}()/\@`.
+an exception. The characters are the following: `{}()/\@:`.
 
 ## Deprecated `SQLLogger` and its implementations.
 
@@ -2215,7 +2290,7 @@ Additional related changes:
 
 1. The `FetchMode` class and the `setFetchMode()` method of the `Connection` and `Statement` interfaces are removed.
 2. The `Statement::fetch()` method is replaced with `fetchNumeric()`, `fetchAssociative()` and `fetchOne()`.
-3. The `Statement::fetchAll()` method is replaced with `fetchAllNumeric()`, `fetchAllAssociative()` and `fechColumn()`.
+3. The `Statement::fetchAll()` method is replaced with `fetchAllNumeric()`, `fetchAllAssociative()` and `fetchColumn()`.
 4. The `Statement::fetchColumn()` method is replaced with `fetchOne()`.
 5. The `Connection::fetchArray()` and `fetchAssoc()` methods are replaced with `fetchNumeric()` and `fetchAssociative()` respectively.
 6. The `StatementIterator` class is removed. The usage of a `Statement` object as `Traversable` is no longer possible. Use `iterateNumeric()`, `iterateAssociative()` and `iterateColumn()` instead.
@@ -2279,7 +2354,7 @@ All implementations of the `VersionAwarePlatformDriver` interface have to implem
 ## BC BREAK: Removed `MsSQLKeywords` class
 
 The `Doctrine\DBAL\Platforms\MsSQLKeywords` class has been removed.
-Please use `Doctrine\DBAL\Platforms\SQLServerPlatform `instead.
+Please use `Doctrine\DBAL\Platforms\SQLServerPlatform` instead.
 
 ## BC BREAK: Removed PDO DB2 driver
 

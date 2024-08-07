@@ -14,6 +14,8 @@ use Doctrine\DBAL\Schema\Identifier;
 use Doctrine\DBAL\Schema\Index;
 use Doctrine\DBAL\Schema\MySQLSchemaManager;
 use Doctrine\DBAL\Schema\TableDiff;
+use Doctrine\DBAL\SQL\Builder\DefaultSelectSQLBuilder;
+use Doctrine\DBAL\SQL\Builder\SelectSQLBuilder;
 use Doctrine\DBAL\TransactionIsolationLevel;
 use Doctrine\DBAL\Types\Types;
 
@@ -120,6 +122,14 @@ abstract class AbstractMySQLPlatform extends AbstractPlatform
     }
 
     /**
+     * {@inheritDoc}
+     */
+    public function getJsonTypeDeclarationSQL(array $column): string
+    {
+        return 'JSON';
+    }
+
+    /**
      * Gets the SQL snippet used to declare a CLOB column type.
      *     TINYTEXT   : 2 ^  8 - 1 = 255
      *     TEXT       : 2 ^ 16 - 1 = 65535
@@ -208,15 +218,13 @@ abstract class AbstractMySQLPlatform extends AbstractPlatform
     }
 
     /**
-     * The SQL snippets required to elucidate a column type
+     * The SQL snippet required to elucidate a column type
      *
-     * Returns an array of the form [column type SELECT snippet, additional JOIN statement snippet]
-     *
-     * @return array{string, string}
+     * Returns a column type SELECT snippet string
      */
-    public function getColumnTypeSQLSnippets(string $tableAlias = 'c'): array
+    public function getColumnTypeSQLSnippet(string $tableAlias, string $databaseName): string
     {
-        return [$tableAlias . '.COLUMN_TYPE', ''];
+        return $tableAlias . '.COLUMN_TYPE';
     }
 
     /**
@@ -272,6 +280,11 @@ abstract class AbstractMySQLPlatform extends AbstractPlatform
         }
 
         return $sql;
+    }
+
+    public function createSelectSQLBuilder(): SelectSQLBuilder
+    {
+        return new DefaultSelectSQLBuilder($this, 'FOR UPDATE', null);
     }
 
     /**
@@ -701,11 +714,6 @@ abstract class AbstractMySQLPlatform extends AbstractPlatform
     public function getSetTransactionIsolationSQL(TransactionIsolationLevel $level): string
     {
         return 'SET SESSION TRANSACTION ISOLATION LEVEL ' . $this->_getTransactionIsolationLevelSQL($level);
-    }
-
-    public function getReadLockSQL(): string
-    {
-        return 'LOCK IN SHARE MODE';
     }
 
     protected function initializeDoctrineTypeMappings(): void

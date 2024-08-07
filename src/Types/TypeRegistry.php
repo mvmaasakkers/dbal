@@ -5,21 +5,32 @@ declare(strict_types=1);
 namespace Doctrine\DBAL\Types;
 
 use Doctrine\DBAL\Exception;
+use Doctrine\DBAL\Types\Exception\TypeAlreadyRegistered;
 use Doctrine\DBAL\Types\Exception\TypeNotFound;
 use Doctrine\DBAL\Types\Exception\TypeNotRegistered;
 use Doctrine\DBAL\Types\Exception\TypesAlreadyExists;
 use Doctrine\DBAL\Types\Exception\UnknownColumnType;
 
-use function array_search;
+use function spl_object_id;
 
 /**
  * The type registry is responsible for holding a map of all known DBAL types.
  */
 final class TypeRegistry
 {
+    /** @var array<string, Type> Map of type names and their corresponding flyweight objects. */
+    private array $instances;
+    /** @var array<int, string> */
+    private array $instancesReverseIndex;
+
     /** @param array<string, Type> $instances */
-    public function __construct(private array $instances = [])
+    public function __construct(array $instances = [])
     {
+        $this->instances             = [];
+        $this->instancesReverseIndex = [];
+        foreach ($instances as $name => $type) {
+            $this->register($name, $type);
+        }
     }
 
     /**
@@ -29,11 +40,12 @@ final class TypeRegistry
      */
     public function get(string $name): Type
     {
-        if (! isset($this->instances[$name])) {
+        $type = $this->instances[$name] ?? null;
+        if ($type === null) {
             throw UnknownColumnType::new($name);
         }
 
-        return $this->instances[$name];
+        return $type;
     }
 
     /**
@@ -43,9 +55,9 @@ final class TypeRegistry
      */
     public function lookupName(Type $type): string
     {
-        $name = array_search($type, $this->instances, true);
+        $name = $this->findTypeName($type);
 
-        if ($name === false) {
+        if ($name === null) {
             throw TypeNotRegistered::new($type);
         }
 
@@ -71,7 +83,12 @@ final class TypeRegistry
             throw TypesAlreadyExists::new($name);
         }
 
-        $this->instances[$name] = $type;
+        if ($this->findTypeName($type) !== null) {
+            throw TypeAlreadyRegistered::new($type);
+        }
+
+        $this->instances[$name]                            = $type;
+        $this->instancesReverseIndex[spl_object_id($type)] = $name;
     }
 
     /**
@@ -81,11 +98,18 @@ final class TypeRegistry
      */
     public function override(string $name, Type $type): void
     {
-        if (! isset($this->instances[$name])) {
+        $origType = $this->instances[$name] ?? null;
+        if ($origType === null) {
             throw TypeNotFound::new($name);
         }
 
-        $this->instances[$name] = $type;
+        if (($this->findTypeName($type) ?? $name) !== $name) {
+            throw TypeAlreadyRegistered::new($type);
+        }
+
+        unset($this->instancesReverseIndex[spl_object_id($origType)]);
+        $this->instances[$name]                            = $type;
+        $this->instancesReverseIndex[spl_object_id($type)] = $name;
     }
 
     /**
@@ -98,5 +122,10 @@ final class TypeRegistry
     public function getMap(): array
     {
         return $this->instances;
+    }
+
+    private function findTypeName(Type $type): ?string
+    {
+        return $this->instancesReverseIndex[spl_object_id($type)] ?? null;
     }
 }

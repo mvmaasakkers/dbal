@@ -83,22 +83,26 @@ bigint
 ++++++
 
 Maps and converts 8-byte integer values.
-Unsigned integer values have a range of **0** to **18446744073709551615** while signed
+Unsigned integer values have a range of **0** to **18446744073709551615**, while signed
 integer values have a range of **−9223372036854775808** to **9223372036854775807**.
 If you know the integer data you want to store always fits into one of these ranges
 you should consider using this type.
-Values retrieved from the database are always converted to PHP's ``string`` type
-or ``null`` if no data is present.
+Values retrieved from the database are always converted to PHP's ``integer`` type
+if they are within PHP's integer range or ``string`` if they aren't.
+Otherwise, returns ``null`` if no data is present.
+
+.. versionadded:: 4.0
+
+The mapping to PHP ``int`` was added in version 4.0
 
 .. note::
 
-    For compatibility reasons this type is not converted to an integer
-    as PHP can only represent big integer values as real integers on
-    systems with a 64-bit architecture and would fall back to approximated
-    float values otherwise which could lead to false assumptions in applications.
-
-    Not all of the database vendors support unsigned integers, so such an assumption
-    might not be propagated to the database.
+    Due to architectural differences, 32-bit PHP systems have a smaller
+    integer range than their 64-bit counterparts. On 32-bit systems,
+    values exceeding this range will be represented as strings instead
+    of integers. Bear in mind that not all database vendors
+    support unsigned integers, so schema configuration cannot be
+    enforced.
 
 Decimal types
 ^^^^^^^^^^^^^
@@ -306,6 +310,15 @@ If you know that the data to be stored always contains date, time and timezone
 information, you should consider using this type.
 Values retrieved from the database are always converted to PHP's ``\DateTime`` object
 or ``null`` if no data is present.
+
+.. note::
+
+    This type is not supported by all the vendor platforms or by all of their versions. Depending on
+    these variants, the databases that support this type may return the persisted date and time in a
+    different timezone than the one used during the ``INSERT`` or the ``UPDATE`` operation. This means
+    that if you persist a value like `1986-22-03 19:45:30-03:00`, you could have `1986-22-03 22:45:30-00:00`
+    as the result of a ``SELECT`` operation for that record. In these cases, the timezone offset present
+    in the result is usually UTC or the one configured as default in the database server.
 
 .. warning::
 
@@ -848,19 +861,8 @@ Now we implement our ``Doctrine\DBAL\Types\Type`` instance:
 
 The job of Doctrine-DBAL is to transform your type into an SQL
 declaration. You can modify the SQL declaration Doctrine will produce.
-At first, to enable this feature, you must override the
-``canRequireSQLConversion`` method:
-
-::
-
-    <?php
-    public function canRequireSQLConversion()
-    {
-        return true;
-    }
-
-Then you override the ``convertToPhpValueSQL`` and
-``convertToDatabaseValueSQL`` methods :
+At first, you override the ``convertToPhpValueSQL`` and
+``convertToDatabaseValueSQL`` methods:
 
 ::
 
@@ -875,7 +877,7 @@ Then you override the ``convertToPhpValueSQL`` and
         return 'MyFunction('.$sqlExpr.')';
     }
 
-Now we have to register this type with the Doctrine Type system and
+Then you have to register this type with the Doctrine Type system and
 hook it into the database platform:
 
 ::

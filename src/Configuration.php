@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Doctrine\DBAL;
 
 use Doctrine\DBAL\Driver\Middleware;
+use Doctrine\DBAL\Exception\InvalidArgumentException;
 use Doctrine\DBAL\Schema\SchemaManagerFactory;
 use Psr\Cache\CacheItemPoolInterface;
 
@@ -129,6 +130,26 @@ class Configuration
     public function setSchemaManagerFactory(SchemaManagerFactory $schemaManagerFactory): self
     {
         $this->schemaManagerFactory = $schemaManagerFactory;
+
+        return $this;
+    }
+
+    /** @return true */
+    public function getDisableTypeComments(): bool
+    {
+        return true;
+    }
+
+    /**
+     * @param true $disableTypeComments
+     *
+     * @return $this
+     */
+    public function setDisableTypeComments(bool $disableTypeComments): self
+    {
+        if (! $disableTypeComments) {
+            throw new InvalidArgumentException('Column comments cannot be enabled anymore.');
+        }
 
         return $this;
     }

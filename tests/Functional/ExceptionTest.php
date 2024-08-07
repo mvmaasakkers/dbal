@@ -12,19 +12,22 @@ use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Tests\FunctionalTestCase;
 use Doctrine\DBAL\Tests\TestUtil;
 use Doctrine\DBAL\Types\Types;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 use function array_merge;
 use function chmod;
 use function exec;
 use function extension_loaded;
 use function file_exists;
+use function func_get_args;
 use function posix_geteuid;
+use function restore_error_handler;
+use function set_error_handler;
 use function sprintf;
 use function sys_get_temp_dir;
 use function touch;
 use function unlink;
 
-use const E_ALL;
 use const E_WARNING;
 use const PHP_OS_FAMILY;
 
@@ -82,11 +85,24 @@ class ExceptionTest extends FunctionalTestCase
         $table->addColumn('id', Types::INTEGER, []);
         $this->dropAndCreateTable($table);
 
-        // prevent the PHPUnit error handler from handling the warning that db2_bind_param() may trigger
-        $this->iniSet('error_reporting', (string) (E_ALL & ~E_WARNING));
-
         $this->expectException(Exception\InvalidFieldNameException::class);
-        $this->connection->insert('bad_columnname_table', ['name' => 5]);
+
+        // prevent the PHPUnit error handler from handling the warning that db2_bind_param() may trigger
+        /** @var callable|null $previous */
+        $previous = null;
+        $previous = set_error_handler(static function (int $errno) use (&$previous): bool {
+            if (($errno & ~E_WARNING) === 0) {
+                return true;
+            }
+
+            return $previous !== null && $previous(...func_get_args());
+        });
+
+        try {
+            $this->connection->insert('bad_columnname_table', ['name' => 5]);
+        } finally {
+            restore_error_handler();
+        }
     }
 
     public function testNonUniqueFieldNameException(): void
@@ -202,9 +218,8 @@ class ExceptionTest extends FunctionalTestCase
      * @param array<string, mixed> $params
      * @psalm-param Params $params
      * @phpstan-param array<string,mixed> $params
-     *
-     * @dataProvider getConnectionParams
      */
+    #[DataProvider('getConnectionParams')]
     private function testConnectionException(array $params): void
     {
         $platform = $this->connection->getDatabasePlatform();

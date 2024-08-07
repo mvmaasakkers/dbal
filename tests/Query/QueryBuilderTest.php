@@ -8,19 +8,23 @@ use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Cache\QueryCacheProfile;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Query\Expression\ExpressionBuilder;
 use Doctrine\DBAL\Query\QueryBuilder;
 use Doctrine\DBAL\Query\QueryException;
 use Doctrine\DBAL\Result;
+use Doctrine\DBAL\SQL\Builder\DefaultSelectSQLBuilder;
 use Doctrine\DBAL\Types\Types;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+
+use function hex2bin;
 
 /** @psalm-import-type WrapperParameterTypeArray from Connection */
 class QueryBuilderTest extends TestCase
 {
-    /** @var Connection&MockObject */
-    protected Connection $conn;
+    protected Connection&MockObject $conn;
 
     protected function setUp(): void
     {
@@ -28,9 +32,15 @@ class QueryBuilderTest extends TestCase
 
         $expressionBuilder = new ExpressionBuilder($this->conn);
 
-        $this->conn->expects(self::any())
-                   ->method('createExpressionBuilder')
-                   ->willReturn($expressionBuilder);
+        $this->conn->method('createExpressionBuilder')
+           ->willReturn($expressionBuilder);
+
+        $platform = $this->createMock(AbstractPlatform::class);
+        $platform->method('createSelectSQLBuilder')
+            ->willReturn(new DefaultSelectSQLBuilder($platform, null, null));
+
+        $this->conn->method('getDatabasePlatform')
+            ->willReturn($platform);
     }
 
     public function testSimpleSelectWithoutFrom(): void
@@ -475,7 +485,7 @@ class QueryBuilderTest extends TestCase
         self::assertEquals('INSERT INTO users (foo, bar) VALUES(?, ?)', (string) $qb);
     }
 
-    /** @dataProvider maxResultsProvider */
+    #[DataProvider('maxResultsProvider')]
     public function testSetMaxResults(?int $maxResults): void
     {
         $qb = new QueryBuilder($this->conn);
@@ -499,6 +509,78 @@ class QueryBuilderTest extends TestCase
         $qb->setFirstResult(10);
 
         self::assertEquals(10, $qb->getFirstResult());
+    }
+
+    private function prepareQueryBuilderToReset(): QueryBuilder
+    {
+        $qb = (new QueryBuilder($this->conn))
+            ->select('u.*')
+            ->distinct()
+            ->from('users', 'u')
+            ->where('u.name = ?')
+            ->orderBy('u.name', 'ASC');
+
+        self::assertEquals('SELECT DISTINCT u.* FROM users u WHERE u.name = ? ORDER BY u.name ASC', (string) $qb);
+
+        return $qb;
+    }
+
+    public function testResetDistinct(): void
+    {
+        $qb = $this->prepareQueryBuilderToReset()->distinct(false);
+
+        self::assertEquals('SELECT u.* FROM users u WHERE u.name = ? ORDER BY u.name ASC', (string) $qb);
+    }
+
+    public function testResetWhere(): void
+    {
+        $qb = $this->prepareQueryBuilderToReset()->resetWhere();
+
+        self::assertEquals('SELECT DISTINCT u.* FROM users u ORDER BY u.name ASC', (string) $qb);
+    }
+
+    public function testResetOrderBy(): void
+    {
+        $qb = $this->prepareQueryBuilderToReset()->resetOrderBy();
+
+        self::assertEquals('SELECT DISTINCT u.* FROM users u WHERE u.name = ?', (string) $qb);
+    }
+
+    private function prepareGroupedQueryBuilderToReset(): QueryBuilder
+    {
+        $qb = (new QueryBuilder($this->conn))
+            ->select('u.country', 'COUNT(*)')
+            ->from('users', 'u')
+            ->groupBy('u.country')
+            ->having('COUNT(*) > ?')
+            ->orderBy('COUNT(*)', 'DESC');
+
+        self::assertEquals(
+            'SELECT u.country, COUNT(*) FROM users u GROUP BY u.country HAVING COUNT(*) > ? ORDER BY COUNT(*) DESC',
+            (string) $qb,
+        );
+
+        return $qb;
+    }
+
+    public function testResetHaving(): void
+    {
+        $qb = $this->prepareGroupedQueryBuilderToReset()->resetHaving();
+
+        self::assertEquals(
+            'SELECT u.country, COUNT(*) FROM users u GROUP BY u.country ORDER BY COUNT(*) DESC',
+            (string) $qb,
+        );
+    }
+
+    public function testResetGroupBy(): void
+    {
+        $qb = $this->prepareGroupedQueryBuilderToReset()->resetGroupBy();
+
+        self::assertEquals(
+            'SELECT u.country, COUNT(*) FROM users u HAVING COUNT(*) > ? ORDER BY COUNT(*) DESC',
+            (string) $qb,
+        );
     }
 
     public function testCreateNamedParameter(): void
@@ -814,12 +896,17 @@ class QueryBuilderTest extends TestCase
         $qb->andWhere('name IN (:names)');
         $qb->setParameter('names', ['john', 'jane'], ArrayParameterType::STRING);
 
+        $qb->andWhere('hash IN (:hashes)');
+        $qb->setParameter('hashes', [hex2bin('DEADBEEF'), hex2bin('C0DEF00D')], ArrayParameterType::BINARY);
+
         self::assertSame(ArrayParameterType::INTEGER, $qb->getParameterType('ids'));
         self::assertSame(ArrayParameterType::STRING, $qb->getParameterType('names'));
+        self::assertSame(ArrayParameterType::BINARY, $qb->getParameterType('hashes'));
 
         self::assertSame([
             'ids'   => ArrayParameterType::INTEGER,
             'names' => ArrayParameterType::STRING,
+            'hashes' => ArrayParameterType::BINARY,
         ], $qb->getParameterTypes());
     }
 
@@ -842,9 +929,8 @@ class QueryBuilderTest extends TestCase
     /**
      * @param list<mixed>|array<string, mixed> $parameters
      * @psalm-param WrapperParameterTypeArray $parameterTypes
-     *
-     * @dataProvider fetchProvider
      */
+    #[DataProvider('fetchProvider')]
     public function testFetchAssociative(
         string $select,
         string $from,
@@ -877,9 +963,8 @@ class QueryBuilderTest extends TestCase
     /**
      * @param list<mixed>|array<string, mixed> $parameters
      * @psalm-param WrapperParameterTypeArray $parameterTypes
-     *
-     * @dataProvider fetchProvider
      */
+    #[DataProvider('fetchProvider')]
     public function testFetchNumeric(
         string $select,
         string $from,
@@ -912,9 +997,8 @@ class QueryBuilderTest extends TestCase
     /**
      * @param list<mixed>|array<string, mixed> $parameters
      * @param WrapperParameterTypeArray        $parameterTypes
-     *
-     * @dataProvider fetchProvider
      */
+    #[DataProvider('fetchProvider')]
     public function testFetchOne(
         string $select,
         string $from,
@@ -947,9 +1031,8 @@ class QueryBuilderTest extends TestCase
     /**
      * @param list<mixed>|array<string, mixed> $parameters
      * @psalm-param WrapperParameterTypeArray $parameterTypes
-     *
-     * @dataProvider fetchProvider
      */
+    #[DataProvider('fetchProvider')]
     public function testFetchAllAssociative(
         string $select,
         string $from,
@@ -993,9 +1076,8 @@ class QueryBuilderTest extends TestCase
     /**
      * @param list<mixed>|array<string, mixed> $parameters
      * @psalm-param WrapperParameterTypeArray $parameterTypes
-     *
-     * @dataProvider fetchProvider
      */
+    #[DataProvider('fetchProvider')]
     public function testFetchAllNumeric(
         string $select,
         string $from,
@@ -1039,9 +1121,8 @@ class QueryBuilderTest extends TestCase
     /**
      * @param list<mixed>|array<string, mixed> $parameters
      * @psalm-param WrapperParameterTypeArray $parameterTypes
-     *
-     * @dataProvider fetchProvider
      */
+    #[DataProvider('fetchProvider')]
     public function testFetchAllKeyValue(
         string $select,
         string $from,
@@ -1085,9 +1166,8 @@ class QueryBuilderTest extends TestCase
     /**
      * @param list<mixed>|array<string, mixed> $parameters
      * @psalm-param WrapperParameterTypeArray $parameterTypes
-     *
-     * @dataProvider fetchProvider
      */
+    #[DataProvider('fetchProvider')]
     public function testFetchAllAssociativeIndexed(
         string $select,
         string $from,
@@ -1135,9 +1215,8 @@ class QueryBuilderTest extends TestCase
     /**
      * @param list<mixed>|array<string, mixed> $parameters
      * @psalm-param WrapperParameterTypeArray $parameterTypes
-     *
-     * @dataProvider fetchProvider
      */
+    #[DataProvider('fetchProvider')]
     public function testFetchFirstColumn(
         string $select,
         string $from,
@@ -1232,9 +1311,8 @@ class QueryBuilderTest extends TestCase
     /**
      * @param list<mixed>|array<string, mixed> $params
      * @psalm-param WrapperParameterTypeArray $types
-     *
-     * @dataProvider fetchProvider
      */
+    #[DataProvider('fetchProvider')]
     public function testExecuteQuery(
         string $select,
         string $from,
@@ -1266,9 +1344,8 @@ class QueryBuilderTest extends TestCase
     /**
      * @param list<mixed>|array<string, mixed> $parameters
      * @psalm-param WrapperParameterTypeArray $parameterTypes
-     *
-     * @dataProvider fetchProvider
      */
+    #[DataProvider('fetchProvider')]
     public function testExecuteQueryWithResultCaching(
         string $select,
         string $from,

@@ -14,6 +14,7 @@ use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Schema\TableDiff;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 /** @extends AbstractPlatformTestCase<DB2Platform> */
 class DB2PlatformTest extends AbstractPlatformTestCase
@@ -321,7 +322,6 @@ class DB2PlatformTest extends AbstractPlatformTestCase
         );
 
         self::assertEquals("'1987/05/02' - 10 YEAR", $this->platform->getDateSubYearsExpression("'1987/05/02'", '10'));
-        self::assertEquals(' WITH RR USE AND KEEP UPDATE LOCKS', $this->platform->getForUpdateSQL());
 
         self::assertEquals(
             'LOCATE(substring_column, string_column)',
@@ -441,7 +441,7 @@ class DB2PlatformTest extends AbstractPlatformTestCase
         ];
     }
 
-    /** @dataProvider getGeneratesAlterColumnSQL */
+    #[DataProvider('getGeneratesAlterColumnSQL')]
     public function testGeneratesAlterColumnSQL(
         Column $oldColumn,
         Column $newColumn,

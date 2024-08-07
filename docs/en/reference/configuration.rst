@@ -280,6 +280,8 @@ pdo_pgsql / pgsql
 -  ``sslcrl`` (string): specifies the filename of the SSL certificate
    revocation list (CRL).
    See `https://www.postgresql.org/docs/9.4/static/libpq-connect.html#LIBPQ-CONNECT-SSLCRL`
+-  ``gssencmode`` (string): Optional GSS-encrypted channel/GSSEncMode configuration.
+   See `https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-GSSENCMODE`
 -  ``application_name`` (string): Name of the application that is
    connecting to database. Optional. It will be displayed at ``pg_stat_activity``.
 
@@ -319,6 +321,9 @@ pdo_oci / oci8
    parameters will no longer be used. Note that when using this parameter, the ``getHost``
    and ``getPort`` methods from ``Doctrine\DBAL\Connection`` will no longer function as expected.
 -  ``persistent`` (boolean): Whether to establish a persistent connection.
+-  ``driverOptions`` (array):
+    -  ``exclusive`` (boolean): Once specified for an ``oci8`` connection, forces the driver to always establish
+       a new connection instead of reusing an existing one from the connection pool.
 
 pdo_sqlsrv / sqlsrv
 ^^^^^^^^^^^^^^^^^^^
@@ -330,6 +335,7 @@ pdo_sqlsrv / sqlsrv
 -  ``host`` (string): Hostname of the database to connect to.
 -  ``port`` (integer): Port of the database to connect to.
 -  ``dbname`` (string): Name of the database/schema to connect to.
+-  ``driverOptions`` (array): Any supported options found on `https://learn.microsoft.com/en-us/sql/connect/php/connection-options`
 
 ibm_db2
 ^^^^^^^

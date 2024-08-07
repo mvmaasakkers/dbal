@@ -95,11 +95,16 @@ class TypeRegistryTest extends TestCase
         $newType = new TextType();
 
         $this->registry->register('type1', $newType);
+        $this->expectException(Exception::class);
         $this->registry->register('type2', $newType);
-        self::assertSame(
-            $this->registry->get('type1'),
-            $this->registry->get('type2'),
-        );
+    }
+
+    public function testConstructorWithDuplicateInstance(): void
+    {
+        $newType = new TextType();
+
+        $this->expectException(Exception::class);
+        new TypeRegistry(['a' => $newType, 'b' => $newType]);
     }
 
     public function testOverride(): void
@@ -127,6 +132,17 @@ class TypeRegistryTest extends TestCase
     {
         $this->expectException(Exception::class);
         $this->registry->override('unknown', new TextType());
+    }
+
+    public function testOverrideWithAlreadyRegisteredInstance(): void
+    {
+        $newType = new TextType();
+
+        $this->registry->register('first', $newType);
+        $this->registry->register('second', new StringType());
+
+        $this->expectException(Exception::class);
+        $this->registry->override('second', $newType);
     }
 
     public function testGetMap(): void

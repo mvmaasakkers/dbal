@@ -17,8 +17,11 @@ use Doctrine\DBAL\Schema\Index;
 use Doctrine\DBAL\Schema\SQLiteSchemaManager;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Schema\TableDiff;
+use Doctrine\DBAL\SQL\Builder\DefaultSelectSQLBuilder;
+use Doctrine\DBAL\SQL\Builder\SelectSQLBuilder;
 use Doctrine\DBAL\TransactionIsolationLevel;
 use Doctrine\DBAL\Types;
+use InvalidArgumentException;
 
 use function array_combine;
 use function array_keys;
@@ -27,10 +30,13 @@ use function array_search;
 use function array_unique;
 use function array_values;
 use function count;
+use function explode;
 use function implode;
 use function sprintf;
 use function str_replace;
+use function strpos;
 use function strtolower;
+use function substr;
 use function trim;
 
 /**
@@ -145,6 +151,12 @@ class SQLitePlatform extends AbstractPlatform
     public function getCurrentDatabaseExpression(): string
     {
         return "'main'";
+    }
+
+    /** @link https://www2.sqlite.org/cvstrac/wiki?p=UnsupportedSql */
+    public function createSelectSQLBuilder(): SelectSQLBuilder
+    {
+        return new DefaultSelectSQLBuilder($this, null, null);
     }
 
     protected function _getTransactionIsolationLevelSQL(TransactionIsolationLevel $level): string
@@ -407,11 +419,6 @@ class SQLitePlatform extends AbstractPlatform
         return 'DELETE FROM ' . $tableIdentifier->getQuotedName($this);
     }
 
-    public function getForUpdateSQL(): string
-    {
-        return '';
-    }
-
     /** @internal The method should be only used from within the {@see AbstractPlatform} class hierarchy. */
     public function getInlineColumnCommentSQL(string $comment): string
     {
@@ -535,6 +542,35 @@ class SQLitePlatform extends AbstractPlatform
         return $sql;
     }
 
+    /** {@inheritDoc} */
+    public function getCreateIndexSQL(Index $index, string $table): string
+    {
+        $name    = $index->getQuotedName($this);
+        $columns = $index->getColumns();
+
+        if (count($columns) === 0) {
+            throw new InvalidArgumentException(sprintf(
+                'Incomplete or invalid index definition %s on table %s',
+                $name,
+                $table,
+            ));
+        }
+
+        if ($index->isPrimary()) {
+            return $this->getCreatePrimaryKeySQL($index, $table);
+        }
+
+        if (strpos($table, '.') !== false) {
+            [$schema, $table] = explode('.', $table);
+            $name             = $schema . '.' . $name;
+        }
+
+        $query  = 'CREATE ' . $this->getCreateIndexSQLFlags($index) . 'INDEX ' . $name . ' ON ' . $table;
+        $query .= ' (' . implode(', ', $index->getQuotedColumns($this)) . ')' . $this->getPartialIndexSQL($index);
+
+        return $query;
+    }
+
     /**
      * {@inheritDoc}
      */
@@ -639,7 +675,13 @@ class SQLitePlatform extends AbstractPlatform
             $columns[strtolower($column->getName())] = $column;
         }
 
-        $dataTable = new Table('__temp__' . $table->getName());
+        $tableName = $table->getName();
+        $pos       = strpos($tableName, '.');
+        if ($pos !== false) {
+            $tableName = substr($tableName, $pos + 1);
+        }
+
+        $dataTable = new Table('__temp__' . $tableName);
 
         $newTable = new Table(
             $table->getQuotedName($this),
@@ -737,6 +779,7 @@ class SQLitePlatform extends AbstractPlatform
 
             $type = $definition['type'];
 
+            /** @psalm-suppress RiskyTruthyFalsyComparison */
             switch (true) {
                 case isset($definition['columnDefinition']) || $definition['autoincrement'] || $definition['unique']:
                 case $type instanceof Types\DateTimeType && $definition['default'] === $this->getCurrentTimestampSQL():

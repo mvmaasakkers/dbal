@@ -8,6 +8,7 @@ use Doctrine\DBAL\Platforms\Keywords\KeywordList;
 use Doctrine\DBAL\Platforms\Keywords\MariaDBKeywords;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use Doctrine\DBAL\Schema\TableDiff;
+use Doctrine\DBAL\Types\JsonType;
 
 use function array_diff_key;
 use function array_merge;
@@ -20,13 +21,38 @@ use function in_array;
 class MariaDBPlatform extends AbstractMySQLPlatform
 {
     /**
-     * {@inheritDoc}
+     * Generate SQL snippets to reverse the aliasing of JSON to LONGTEXT.
      *
-     * @link https://mariadb.com/kb/en/library/json-data-type/
+     * MariaDb aliases columns specified as JSON to LONGTEXT and sets a CHECK constraint to ensure the column
+     * is valid json. This function generates the SQL snippets which reverse this aliasing i.e. report a column
+     * as JSON where it was originally specified as such instead of LONGTEXT.
+     *
+     * The CHECK constraints are stored in information_schema.CHECK_CONSTRAINTS so query that table.
      */
-    public function getJsonTypeDeclarationSQL(array $column): string
+    public function getColumnTypeSQLSnippet(string $tableAlias, string $databaseName): string
     {
-        return 'LONGTEXT';
+        $subQueryAlias = 'i_' . $tableAlias;
+
+        $databaseName = $this->quoteStringLiteral($databaseName);
+
+        // The check for `CONSTRAINT_SCHEMA = $databaseName` is mandatory here to prevent performance issues
+        return <<<SQL
+            IF(
+                $tableAlias.COLUMN_TYPE = 'longtext'
+                AND EXISTS(
+                    SELECT * FROM information_schema.CHECK_CONSTRAINTS $subQueryAlias
+                    WHERE $subQueryAlias.CONSTRAINT_SCHEMA = $databaseName
+                    AND $subQueryAlias.TABLE_NAME = $tableAlias.TABLE_NAME
+                    AND $subQueryAlias.CHECK_CLAUSE = CONCAT(
+                        'json_valid(`',
+                            $tableAlias.COLUMN_NAME,
+                        '`)'
+                    )
+                ),
+                'json',
+                $tableAlias.COLUMN_TYPE
+            )
+        SQL;
     }
 
     /**
@@ -117,6 +143,19 @@ class MariaDBPlatform extends AbstractMySQLPlatform
         }
 
         return $foreignKeys;
+    }
+
+    /** {@inheritDoc} */
+    public function getColumnDeclarationSQL(string $name, array $column): string
+    {
+        // MariaDb forces column collation to utf8mb4_bin where the column was declared as JSON so ignore
+        // collation and character set for json columns as attempting to set them can cause an error.
+        if ($this->getJsonTypeDeclarationSQL([]) === 'JSON' && ($column['type'] ?? null) instanceof JsonType) {
+            unset($column['collation']);
+            unset($column['charset']);
+        }
+
+        return parent::getColumnDeclarationSQL($name, $column);
     }
 
     protected function createReservedKeywordsList(): KeywordList
